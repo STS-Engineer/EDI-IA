@@ -803,7 +803,7 @@ def process_nidec_pdf(file, customer_code, customer_name):
 
 
 def process_bosch_pdf(file, customer_code, customer_name, output_dir=None):
-    """Process BOSCH PDF format - Updated version with material mapping"""
+    """Process BOSCH PDF format - Fixed version with correct column parsing"""
     if output_dir is None:
         output_dir = OUTPUT_DIR
 
@@ -850,47 +850,87 @@ def process_bosch_pdf(file, customer_code, customer_name, output_dir=None):
         avo_code = bosch_reverse_map[material]
         client_code = material
 
-    pattern_full = re.compile(
-        r"(\d{2}\.\d{2}\.\d{2})\s+\d{2}:\d{2}\s+"
-        r"(\d{2}\.\d{2}\.\d{2})\s+\d{2}:\d{2}\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+(\w+)",
+    # Updated regex patterns to handle different Bosch PDF formats
+    # Pattern 1: Full format with times: Liefertermin Time Abholtermin Time Liefermenge EFZ Verbindlichkeitsstufe
+    pattern_with_times = re.compile(
+        r"(\d{2}\.\d{2}\.\d{2})\s+(\d{2}:\d{2})\s+"  # Liefertermin + Time
+        r"(\d{2}\.\d{2}\.\d{2})\s+(\d{2}:\d{2})\s+"  # Abholtermin + Time
+        r"([\d.,]+)\s+"                              # Liefermenge
+        r"([\d.,]+)\s+"                              # EFZ
+        r"(\w+)",                                    # Verbindlichkeitsstufe
         re.UNICODE
     )
 
+    # Pattern 2: Format without times: Liefertermin Abholtermin Liefermenge EFZ Differenz Verbindlichkeitsstufe
+    pattern_no_times = re.compile(
+        r"(\d{2}\.\d{2}\.\d{2})\s+"  # Liefertermin
+        r"(\d{2}\.\d{2}\.\d{2})\s+"  # Abholtermin
+        r"([\d.,]+)\s+"              # Liefermenge
+        r"([\d.,]+)\s+"              # EFZ
+        r"([\d.,]+)\s+"              # Differenz (optional)
+        r"(\w+)",                    # Verbindlichkeitsstufe
+        re.UNICODE
+    )
+
+    # Pattern 3: Short format (only pickup date): Abholtermin Liefermenge EFZ Verbindlichkeitsstufe
     pattern_short = re.compile(
-        r"(\d{2}\.\d{2}\.\d{2})\s+([\d.,]+)\s+([\d.,]+)\s+(\w+)",
+        r"(\d{2}\.\d{2}\.\d{2})\s+"  # Abholtermin (pickup date only)
+        r"([\d.,]+)\s+"              # Liefermenge
+        r"([\d.,]+)\s+"              # EFZ
+        r"(\w+)",                    # Verbindlichkeitsstufe
         re.UNICODE
     )
 
     data = []
 
     for line in lines:
-        match_full = pattern_full.match(line.strip())
-        match_short = pattern_short.match(line.strip())
-
-        if match_full:
-            liefertermin, abholtermin, menge, efz, stufe = match_full.groups()
-        elif match_short:
-            liefertermin, menge, efz, stufe = match_short.groups()
-            abholtermin = ""
+        line_stripped = line.strip()
+        
+        # Try pattern with times first (most complete format)
+        match_with_times = pattern_with_times.match(line_stripped)
+        if match_with_times:
+            liefertermin, lieferzeit, abholtermin, abholzeit, liefermenge, efz, stufe = match_with_times.groups()
+            # Combine date and time for display
+            liefertermin_full = liefertermin
+            abholtermin_full = abholtermin
         else:
-            continue
+            # Try pattern without times
+            match_no_times = pattern_no_times.match(line_stripped)
+            if match_no_times:
+                liefertermin, abholtermin, liefermenge, efz, differenz, stufe = match_no_times.groups()
+                liefertermin_full = liefertermin
+                abholtermin_full = abholtermin
+            else:
+                # Try short pattern (only pickup date)
+                match_short = pattern_short.match(line_stripped)
+                if match_short:
+                    abholtermin, liefermenge, efz, stufe = match_short.groups()
+                    liefertermin_full = ""  # No delivery date in this format
+                    abholtermin_full = abholtermin
+                else:
+                    continue
 
-        liefermenge = menge.replace('.', '').replace(',', '.')
-        efz_val = efz.replace('.', '').replace(',', '.')
+        # Clean up number formats - preserve the original format for display
+        # Convert for calculation but keep original formatting for output
+        liefermenge_for_calc = liefermenge.replace('.', '').replace(',', '.') if ',' in liefermenge else liefermenge
+        efz_for_calc = efz.replace('.', '').replace(',', '.') if ',' in efz else efz
 
+        # Calculate difference
         try:
-            differenz = float(efz_val) - float(data[-1]['EFZ']) if data else float(efz_val)
+            current_efz = float(efz_for_calc)
+            previous_efz = float(data[-1]['EFZ_calc']) if data else 0
+            differenz_calc = current_efz - previous_efz
         except Exception:
-            differenz = 0
+            differenz_calc = 0
+            current_efz = 0
 
         data.append({
             "Client name": customer_name,
-            "Delivery date": liefertermin,
-            "Pickup date": abholtermin,
-            "Quantity": liefermenge,
-            "EFZ": efz_val,
-            "Difference": f"{differenz:.3f}".replace('.', ','),
+            "Delivery date": liefertermin_full,
+            "Pickup date": abholtermin_full,
+            "Quantity": liefermenge,  # Keep original format
+            "EFZ": efz,  # Keep original format
+            "EFZ_calc": current_efz,  # For calculation purposes
             "Commitment level": stufe,
             "AVO Material No": avo_code,
             "Client Material No": client_code,
@@ -901,6 +941,10 @@ def process_bosch_pdf(file, customer_code, customer_name, output_dir=None):
         raise ValueError("Keine Planungsdaten aus der BOSCH PDF extrahiert.")
 
     df = pd.DataFrame(data)
+    
+    # Remove the calculation helper column before saving
+    if 'EFZ_calc' in df.columns:
+        df = df.drop('EFZ_calc', axis=1)
 
     # Create output filename with customer code and timestamp
     output_filename = f"{customer_code}_{int(time.time())}_Plan.csv"
@@ -909,7 +953,6 @@ def process_bosch_pdf(file, customer_code, customer_name, output_dir=None):
 
     logging.info(f"BOSCH PDF data saved to {output_path}")
     return df, output_filename
-
 
  
  
