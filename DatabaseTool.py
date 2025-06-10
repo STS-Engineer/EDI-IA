@@ -803,7 +803,7 @@ def process_nidec_pdf(file, customer_code, customer_name):
 
 
 def process_bosch_pdf(file, customer_code, customer_name, output_dir=None):
-    """Process BOSCH PDF format - Fixed version with correct column parsing"""
+    """Process BOSCH PDF format - Fixed version with correct column parsing and number conversion"""
     if output_dir is None:
         output_dir = OUTPUT_DIR
 
@@ -823,6 +823,32 @@ def process_bosch_pdf(file, customer_code, customer_name, output_dir=None):
         "1021731": "1394320230"
     }
     bosch_reverse_map = {v: k for k, v in bosch_material_map.items()}
+
+    # Function to convert European number format to integer
+    def convert_european_number(value):
+        """Convert European number format to integer"""
+        if not value or pd.isna(value):
+            return 0
+        
+        # Convert to string if not already
+        str_value = str(value).strip()
+        
+        # Handle European format: dots as thousand separators, comma as decimal
+        if ',' in str_value:
+            # Has decimal part - split and handle
+            parts = str_value.split(',')
+            integer_part = parts[0].replace('.', '')  # Remove thousand separators
+            # For integer conversion, we ignore decimal part
+            try:
+                return int(integer_part)
+            except ValueError:
+                return 0
+        else:
+            # No comma, so dots are thousand separators
+            try:
+                return int(str_value.replace('.', ''))
+            except ValueError:
+                return 0
 
     for line in lines:
         if "Organisation:" in line:
@@ -910,27 +936,24 @@ def process_bosch_pdf(file, customer_code, customer_name, output_dir=None):
                 else:
                     continue
 
-        # Clean up number formats - preserve the original format for display
-        # Convert for calculation but keep original formatting for output
-        liefermenge_for_calc = liefermenge.replace('.', '').replace(',', '.') if ',' in liefermenge else liefermenge
-        efz_for_calc = efz.replace('.', '').replace(',', '.') if ',' in efz else efz
+        # Convert European number format to integers
+        liefermenge_converted = convert_european_number(liefermenge)
+        efz_converted = convert_european_number(efz)
 
         # Calculate difference
         try:
-            current_efz = float(efz_for_calc)
             previous_efz = float(data[-1]['EFZ_calc']) if data else 0
-            differenz_calc = current_efz - previous_efz
+            differenz_calc = efz_converted - previous_efz
         except Exception:
             differenz_calc = 0
-            current_efz = 0
 
         data.append({
             "Client name": customer_name,
             "Delivery date": liefertermin_full,
             "Pickup date": abholtermin_full,
-            "Quantity": liefermenge,  # Keep original format
-            "EFZ": efz,  # Keep original format
-            "EFZ_calc": current_efz,  # For calculation purposes
+            "Quantity": liefermenge_converted,  # Now converted to integer
+            "EFZ": efz_converted,  # Now converted to integer
+            "EFZ_calc": efz_converted,  # For calculation purposes
             "Commitment level": stufe,
             "AVO Material No": avo_code,
             "Client Material No": client_code,
@@ -1272,6 +1295,8 @@ def download(filename):
                                     tunisia_error_message=None,
                                     tunisia_success_message=None)
  
+
+
 @app.route('/send_to_db', methods=['POST'])
 def send_to_db():
     try:
