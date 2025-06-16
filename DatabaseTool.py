@@ -17,11 +17,16 @@ from sqlalchemy.engine import URL
 
 db_url = URL.create(
     drivername="postgresql+psycopg2",
-    username="adminavo",
-    password="$#fKcdXPg4@ue8AW",  # No encoding needed
-    host="avo-adb-001.postgres.database.azure.com",
+    username="postgres",
+    password="moma@2025",  # No encoding needed
+    host="localhost",
     port=5432,
-    database="EDI IA"
+    database="AVOcarbon"
+    #username="adminavo",
+    #password="$#fKcdXPg4@ue8AW",  # No encoding needed
+    #host="avo-adb-001.postgres.database.azure.com",
+    #port=5432,
+    #database="EDI IA"
 )
 engine = create_engine(db_url)
 
@@ -236,6 +241,71 @@ UPLOAD_FORM_HTML = """<!doctype html>
         border-radius: 5px;
         margin: 10px 0;
       }
+      /* File Type Selection Styling */
+.file-type-selection {
+    margin: 20px 0;
+    text-align: center;
+}
+
+.file-type-options {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+
+.file-type-option {
+    position: relative;
+    display: inline-block;
+}
+
+.file-type-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+}
+
+.file-type-label {
+    display: inline-block;
+    padding: 15px 25px;
+    background-color: #f8f9fa;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    color: #555;
+    transition: all 0.3s ease;
+    text-align: center;
+    min-width: 140px;
+    user-select: none;
+}
+
+.file-type-label:hover {
+    background-color: #e9ecef;
+    border-color: #28a745;
+    color: #333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.file-type-option input[type="radio"]:checked + .file-type-label {
+    background-color: #28a745;
+    color: white;
+    border-color: #28a745;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.file-type-option input[type="radio"]:checked + .file-type-label::before {
+    content: '✓ ';
+    font-weight: bold;
+    margin-right: 5px;
+}
     </style>
  
   </head>
@@ -308,9 +378,25 @@ UPLOAD_FORM_HTML = """<!doctype html>
         {% endif %}
         <h1>Excel Database Import Tool</h1>
         <p>Upload an Excel file (.xls or .xlsx) to send rows to the PostgreSQL database table <strong>EDI</strong>.</p>
-
+        <!-- File Type Selection Form -->
+        <div class="file-type-selection">
+    <h2>Select File Type</h2>
+    <div class="file-type-options">
+        <div class="file-type-option">
+            <input type="radio" name="file_type" value="EDI_FILE" id="edi_file" required 
+                   {% if selected_file_type == 'EDI_FILE' %}checked{% endif %}>
+            <label for="edi_file" class="file-type-label">EDI FILE</label>
+        </div>
+        <div class="file-type-option">
+            <input type="radio" name="file_type" value="DELIVERY_FILE" id="delivery_file" required 
+                   {% if selected_file_type == 'DELIVERY_FILE' %}checked{% endif %}>
+            <label for="delivery_file" class="file-type-label">DELIVERY FILE</label>
+        </div>
+    </div>
+</div>
         <form action="/preview_excel" method="post" enctype="multipart/form-data">
           <input type="file" name="excel_file" accept=".xls,.xlsx" required>
+          <input type="hidden" name="file_type" id="selected_file_type" value="">
           <input type="submit" value="Preview Excel Data">
         </form>
 
@@ -322,14 +408,17 @@ UPLOAD_FORM_HTML = """<!doctype html>
 
         <form action="/insert_excel" method="post">
           <input type="hidden" name="temp_file" value="{{ temp_file }}">
-          <input type="number" name="week_number" placeholder="Enter Week Number" required>
+          <input type="hidden" name="file_type" value="{{ selected_file_type }}">
+          <div id="week-number-group" style="display: none;">
+            <input type="number" name="week_number" id="week_number_input" placeholder="Enter Week Number">
+        </div>
           <input type="submit" value="Send to Database">
         </form>
         {% endif %}
       </div>
 
       <footer>
-        &copy; 2025 Data Processing Tool. All rights reserved. Powered by STS
+        &copy; 2025 Data Processing Tool. All rights reserved. Powered by STS AI Team
       </footer>
     </div>
 
@@ -361,6 +450,60 @@ UPLOAD_FORM_HTML = """<!doctype html>
         const activeTab = formTab || localStorage.getItem('activeTab') || 'germany';
         showTab(activeTab);
       });
+      document.addEventListener('DOMContentLoaded', function() {
+  // Handle file type selection
+  const fileTypeRadios = document.querySelectorAll('input[name="file_type"]');
+  const hiddenFileType = document.getElementById('selected_file_type');
+  const excelForm = document.getElementById('excel-upload-form');
+  
+  fileTypeRadios.forEach(radio => {
+    radio.addEventListener('change', function() {
+      hiddenFileType.value = this.value;
+      
+      // Update form styling based on selection
+      const labels = document.querySelectorAll('label');
+      labels.forEach(label => {
+        label.style.fontWeight = 'normal';
+        label.style.color = '#555';
+      });
+      
+      // Highlight selected option
+      this.parentElement.style.fontWeight = 'bold';
+      this.parentElement.style.color = '#28a745';
+    });
+  });
+  
+  // Prevent form submission if no file type is selected
+  excelForm.addEventListener('submit', function(e) {
+    if (!hiddenFileType.value) {
+      e.preventDefault();
+      alert('Please select a file type (EDI FILE or DELIVERY FILE) before uploading.');
+      return false;
+    }
+  });
+});
+document.addEventListener('DOMContentLoaded', function () {
+  const fileTypeRadios = document.querySelectorAll('input[name="file_type"]');
+  const weekNumberGroup = document.getElementById('week-number-group');
+
+  function toggleWeekNumberField() {
+    const selectedType = document.querySelector('input[name="file_type"]:checked');
+    if (selectedType && selectedType.value === 'EDI_FILE') {
+      weekNumberGroup.style.display = 'block';
+      document.getElementById('week_number_input').required = true;
+    } else {
+      weekNumberGroup.style.display = 'none';
+      document.getElementById('week_number_input').required = false;
+    }
+  }
+
+  fileTypeRadios.forEach(radio => {
+    radio.addEventListener('change', toggleWeekNumberField);
+  });
+
+  // Trigger once on page load (important if pre-selected)
+  toggleWeekNumberField();
+});
     </script>
   </body>
 </html>
@@ -1101,15 +1244,201 @@ def convert():
                                     tunisia_error_message=None,
                                     tunisia_success_message=None)
 
+def process_edi_file(df):
+    """Process EDI FILE type - existing logic"""
+    # Map French column names to English
+    column_mapping = {
+        "Numéro Client": "ClientCode",
+        "NumÃ©ro Client": "ClientCode",
+        "Code article": "ProductCode", 
+        "Q.Cadence prévue": "Quantity",
+        "Q.Cadence prÃ©vue": "Quantity",
+        "Dépôt": "Date",
+        "DÃ©pÃ´t": "Date",
+        "Livraison au plus tard": "ExpectedDeliveryDate"
+    }
+    
+    df = df.rename(columns=column_mapping)
+    
+    # Check for required columns for EDI
+    required_columns = ["ClientCode", "ProductCode", "Quantity", "Date", "ExpectedDeliveryDate"]
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    
+    if missing_columns:
+        # Try alternative mapping
+        alt_mapping = {}
+        for col in df.columns:
+            if "client" in col.lower() or "numéro" in col.lower():
+                alt_mapping[col] = "ClientCode"
+            elif "code" in col.lower() and "article" in col.lower():
+                alt_mapping[col] = "ProductCode"
+            elif "cadence" in col.lower():
+                alt_mapping[col] = "Quantity"
+            elif "dépôt" in col.lower() or "depot" in col.lower():
+                alt_mapping[col] = "Date"
+            elif "livraison" in col.lower() and ("tard" in col.lower() or "plus" in col.lower()):
+                alt_mapping[col] = "ExpectedDeliveryDate"
+        
+        df = df.rename(columns=alt_mapping)
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            raise ValueError(f"Missing required columns for EDI FILE: {missing_columns}. Available columns: {df.columns.tolist()}")
+
+    # Handle data conversion for EDI
+    df = df.dropna(subset=required_columns)
+    
+    # Keep ClientCode and ProductCode as strings for alphanumeric values
+    df["ClientCode"] = df["ClientCode"].astype(str).str.strip()
+    df["ProductCode"] = df["ProductCode"].astype(str).str.strip()
+    df["Date"] = df["Date"].astype(str).str.strip()
+    df["ExpectedDeliveryDate"] = df["ExpectedDeliveryDate"].astype(str).str.strip()
+    
+    # Only convert Quantity to integer  
+    df["Quantity"] = pd.to_numeric(df["Quantity"], errors='coerce').astype('Int64')
+    
+    # Remove rows where Quantity conversion failed
+    df = df.dropna(subset=["Quantity"])
+    
+    # Keep only necessary columns for EDI
+    df = df[["ClientCode", "ProductCode", "Date", "Quantity", "ExpectedDeliveryDate"]]
+    
+    return df
+
+
+def process_delivery_file(df):
+    """Process DELIVERY FILE type - updated logic for new delivery file structure"""
+    # Map columns for delivery files based on your structure
+    column_mapping = {
+        "Tiers": "ClientCode",
+        "Code article": "ProductCode",
+        "Nature": "DeliveryNature"
+    }
+    
+    df = df.rename(columns=column_mapping)
+    
+    # Find the week column (format like "S 18/2025")
+    week_column = None
+    delivered_quantity_column = None
+    
+    for col in df.columns:
+        # Look for columns that match the week pattern (S XX/YYYY)
+        if col.strip().startswith('S ') and '/' in col:
+            week_column = col
+            delivered_quantity_column = col
+            break
+    
+    if not week_column:
+        raise ValueError("Could not find week column (expected format: 'S XX/YYYY'). Available columns: " + str(df.columns.tolist()))
+    
+    # Rename the week column to DeliveredQuantity for processing
+    df = df.rename(columns={week_column: "DeliveredQuantity"})
+    
+    # Extract week number and year from the column name for later use
+    import re
+    week_match = re.search(r'S\s*(\d+)/(\d+)', week_column)
+    if week_match:
+        week_number = week_match.group(1)
+        year = week_match.group(2)
+        df["WeekNumber"] = int(week_number)
+        df["Year"] = int(year)
+    else:
+        raise ValueError(f"Could not parse week number and year from column: {week_column}")
+    
+    # Check for required columns for DELIVERY
+    required_columns = ["ClientCode", "ProductCode", "DeliveredQuantity", "DeliveryNature"]
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    
+    if missing_columns:
+        raise ValueError(f"Missing required columns for DELIVERY FILE: {missing_columns}. Available columns: {df.columns.tolist()}")
+
+    # Handle data conversion for DELIVERY
+    df = df.dropna(subset=required_columns)
+    
+    # Keep ClientCode and ProductCode as strings
+    df["ClientCode"] = df["ClientCode"].astype(str).str.strip()
+    df["ProductCode"] = df["ProductCode"].astype(str).str.strip()
+    df["DeliveryNature"] = df["DeliveryNature"].astype(str).str.strip()
+    
+    # Convert DeliveredQuantity to numeric (can be negative for returns)
+    df["DeliveredQuantity"] = pd.to_numeric(df["DeliveredQuantity"], errors='coerce')
+    
+    # Remove rows where DeliveredQuantity conversion failed
+    df = df.dropna(subset=["DeliveredQuantity"])
+    
+    # ✅ Add YearWeek for update constraint
+    df["YearWeek"] = df["Year"].astype(str) + "_" + df["WeekNumber"].astype(str).str.zfill(2)
+
+    # Keep only necessary columns
+    df = df[["ClientCode", "ProductCode", "DeliveredQuantity", "DeliveryNature", "WeekNumber", "YearWeek"]]
+    
+    return df
+
+
+
+def store_to_postgres_delivery(df):
+    """Update DELIVERY data in PostgreSQL - now includes YearWeek constraint"""
+    try:
+        if df.empty:
+            logging.info("No delivery records to update.")
+            return "N/A" # Return N/A if no data to process
+
+        # Get the week number from the first row of the DataFrame
+        # Assuming all rows in a single file belong to the same week
+        week_number_for_display = df["WeekNumber"].iloc[0]
+        
+        with engine.begin() as conn:
+            for _, row in df.iterrows():
+                # Build the UPDATE statement with YearWeek constraint on Date
+                stmt = text("""
+                    UPDATE "EDITunisia"
+                    SET 
+                        "DeliveredQuantity" = :delivered_qty,
+                        "DeliveryNature" = :delivery_nature
+                    WHERE 
+                        "ClientCode" = :client AND
+                        "ProductCode" = :product AND
+                        "EDIWeekNumber" = :week_number AND
+                        "Date" = :year_week
+                """)
+                
+                params = {
+                    "client": str(row["ClientCode"]),
+                    "product": str(row["ProductCode"]),
+                    "delivered_qty": float(row["DeliveredQuantity"]),
+                    "delivery_nature": str(row["DeliveryNature"]),
+                    "week_number": int(row["WeekNumber"]),
+                    "year_week": str(row["YearWeek"])
+                }
+                
+                conn.execute(stmt, params)
+                
+        logging.info(f"DELIVERY Update attempted for {len(df)} rows.")
+        return str(week_number_for_display) # Return the extracted week number as a string
+
+    except Exception as e:
+        logging.error(f"Error updating DeliveryTunisia table: {e}")
+        raise
+
 @app.route('/preview_excel', methods=['POST'])
 def preview_excel():
     file = request.files.get('excel_file')
+    file_type = request.form.get('file_type')  # Get the selected file type
+    
     if not file or not allowed_file(file.filename):
         return render_template_string(UPLOAD_FORM_HTML,
                                       germany_error_message=None,
                                       germany_success_message=None,
                                       tunisia_error_message="Please upload a valid Excel file.",
                                       tunisia_success_message=None)
+    
+    if not file_type:
+        return render_template_string(UPLOAD_FORM_HTML,
+                                      germany_error_message=None,
+                                      germany_success_message=None,
+                                      tunisia_error_message="Please select a file type (EDI FILE or DELIVERY FILE).",
+                                      tunisia_success_message=None)
+    
     temp_path = os.path.join(OUTPUT_DIR, f"preview_{int(time.time())}.xlsx")
     file.save(temp_path)
 
@@ -1120,67 +1449,13 @@ def preview_excel():
         # Clean column names
         df.columns = df.columns.str.strip()
         
-        # Map French column names to English
-        column_mapping = {
-            "Numéro Client": "ClientCode",
-            "NumÃ©ro Client": "ClientCode",
-            "Code article": "ProductCode", 
-            "Q.Cadence prévue": "Quantity",
-            "Q.Cadence prÃ©vue": "Quantity",
-            "Dépôt": "Date",  # Add the depot/date column
-            "DÃ©pÃ´t": "Date",  # Encoded version of Dépôt
-            "Livraison au plus tard": "ExpectedDeliveryDate"
-        }
-        
-        df = df.rename(columns=column_mapping)
-        
-        # Check for required columns
-        required_columns = ["ClientCode", "ProductCode", "Quantity", "Date"]
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        
-        if missing_columns:
-            # Try alternative mapping
-            alt_mapping = {}
-            for col in df.columns:
-                if "client" in col.lower() or "numéro" in col.lower():
-                    alt_mapping[col] = "ClientCode"
-                elif "code" in col.lower() and "article" in col.lower():
-                    alt_mapping[col] = "ProductCode"
-                elif "cadence" in col.lower():
-                    alt_mapping[col] = "Quantity"
-                elif "dépôt" in col.lower() or "depot" in col.lower():
-                    alt_mapping[col] = "Date"
-            
-            df = df.rename(columns=alt_mapping)
-            missing_columns = [col for col in required_columns if col not in df.columns]
-            
-            if missing_columns:
-                available_cols = df.columns.tolist()
-                return render_template_string(UPLOAD_FORM_HTML,
-                                              error_message=f"Missing required columns: {missing_columns}. Available columns: {available_cols}")
-
-        # Handle data conversion
-        df = df.dropna(subset=required_columns)
-        
-        try:
-            # Keep ClientCode and ProductCode as strings for alphanumeric values
-            df["ClientCode"] = df["ClientCode"].astype(str).str.strip()
-            df["ProductCode"] = df["ProductCode"].astype(str).str.strip()
-            
-            # Convert Date column to string and clean it
-            df["Date"] = df["Date"].astype(str).str.strip()
-            
-            # Only convert Quantity to integer  
-            df["Quantity"] = pd.to_numeric(df["Quantity"], errors='coerce').astype('Int64')
-        except Exception as conv_error:
-            return render_template_string(UPLOAD_FORM_HTML,
-                                          error_message=f"Data conversion error: {conv_error}")
-        
-        # Only drop to these columns if ExpectedDeliveryDate is missing
-        if "ExpectedDeliveryDate" in df.columns:
-            df = df[["ClientCode", "ProductCode", "Date", "Quantity", "ExpectedDeliveryDate"]]
+        # Different processing based on file type
+        if file_type == "EDI_FILE":
+            df = process_edi_file(df)
+        elif file_type == "DELIVERY_FILE":
+            df = process_delivery_file(df)
         else:
-            df = df[["ClientCode", "ProductCode", "Date", "Quantity"]]
+            raise ValueError(f"Invalid file type: {file_type}")
 
         preview_csv = temp_path.replace(".xlsx", ".csv")
         df.to_csv(preview_csv, index=False)
@@ -1192,10 +1467,11 @@ def preview_excel():
                                       transformed_table=None,
                                       preview_data=True,
                                       temp_file=os.path.basename(preview_csv),
+                                      selected_file_type=file_type,  # Pass file type to template
                                       show_download=False,
                                       germany_error_message=None,
                                       germany_success_message=None,
-                                      tunisia_success_message="Excel preview loaded successfully.",
+                                      tunisia_success_message=f"{file_type} preview loaded successfully.",
                                       tunisia_error_message=None)
                                       
     except Exception as e:
@@ -1207,34 +1483,61 @@ def preview_excel():
                                       tunisia_error_message=f"Excel parsing failed: {e}",
                                       tunisia_success_message=None)
 
-    
+
 
 @app.route('/insert_excel', methods=['POST'])
 def insert_excel():
     temp_file = request.form.get("temp_file")
-    week_number = request.form.get("week_number")
+    week_number_str = request.form.get("week_number") # Get as string
+    file_type = request.form.get("file_type")
     file_path = os.path.join(OUTPUT_DIR, temp_file)
 
     try:
-        if not week_number or not week_number.isdigit():
-            raise ValueError("Week number is required and must be a valid number.")
-
+        # Read the CSV file first
         df = pd.read_csv(file_path)
-
-        df["EDIWeekNumber"] = int(week_number)
-
-        # Verify ExpectedDeliveryDate exists and has valid data
-        if "ExpectedDeliveryDate" not in df.columns:
-            raise ValueError("ExpectedDeliveryDate column missing from processed data. Please ensure your Excel file contains a 'Livraison au plus tard' column.")
         
-        # Check for empty values
-        empty_mask = df["ExpectedDeliveryDate"].isin(['', 'nan', 'None', 'NaT']) | df["ExpectedDeliveryDate"].isna()
-        if empty_mask.any():
-            print(f"Warning: {empty_mask.sum()} rows have empty ExpectedDeliveryDate values. Using Date as fallback.")
-            df.loc[empty_mask, "ExpectedDeliveryDate"] = df.loc[empty_mask, "Date"]
+        if file_type == "EDI_FILE":
+            # Validate week_number_str for EDI_FILE type
+            if not week_number_str or not week_number_str.isdigit():
+                # Now df is available for checking
+                if "EDIWeekNumber" in df.columns and df["EDIWeekNumber"].notna().any():
+                    week_number = int(df["EDIWeekNumber"].dropna().iloc[0])
+                    week_number_str = str(week_number)
+                else:
+                    raise ValueError("Week number is required and must be a valid number for EDI FILE type.")
+            else:
+                week_number = int(week_number_str) # Convert to int here after validation
+                
+            # Assign the week number to the dataframe
+            df["EDIWeekNumber"] = week_number
+            
+            if "ExpectedDeliveryDate" not in df.columns:
+                raise ValueError("ExpectedDeliveryDate column missing from processed data. Please ensure your Excel file contains a 'Livraison au plus tard' column.")
+            
+            # Handle fallback for missing ExpectedDeliveryDate values
+            empty_mask = df["ExpectedDeliveryDate"].isin(['', 'nan', 'None', 'NaT']) | df["ExpectedDeliveryDate"].isna()
+            if empty_mask.any():
+                print(f"Warning: {empty_mask.sum()} rows have empty ExpectedDeliveryDate values. Using Date as fallback.")
+                df.loc[empty_mask, "ExpectedDeliveryDate"] = df.loc[empty_mask, "Date"]
 
-        store_to_postgres_edi(df)
+            store_to_postgres_edi(df)
+            
+        elif file_type == "DELIVERY_FILE":
+            # Store delivery records and capture the week number used
+            # Now store_to_postgres_delivery returns the week number
+            week_number_str = store_to_postgres_delivery(df) 
+            
+        else:
+            raise ValueError(f"Unsupported file type: {file_type}")
 
+        # Create appropriate success message based on file type
+        if file_type == "EDI_FILE":
+            success_message = f"{len(df)} rows inserted with Week {week_number_str}."
+        elif file_type == "DELIVERY_FILE":
+            success_message = f"{len(df)} delivery records inserted with Week {week_number_str}."
+        else:
+            success_message = f"{len(df)} rows inserted successfully."
+            
         return render_template_string(UPLOAD_FORM_HTML,
                                       excel_table=df.head(20).to_html(index=False, classes="table"),
                                       transformed_table=None,
@@ -1242,8 +1545,9 @@ def insert_excel():
                                       show_download=False,
                                       germany_error_message=None,
                                       germany_success_message=None,
-                                      tunisia_success_message=f"{len(df)} rows inserted with Week {week_number}.",
+                                      tunisia_success_message=success_message,
                                       tunisia_error_message=None)
+                                      
     except Exception as e:
         return render_template_string(UPLOAD_FORM_HTML,
                                       summary_table=None,
@@ -1251,8 +1555,7 @@ def insert_excel():
                                       germany_error_message=None,
                                       germany_success_message=None,
                                       tunisia_error_message=f"Database insert failed: {e}",
-                                      tunisia_success_message=None)
-
+                                      tunisia_success_message=None)  
 
 @app.route('/download/<filename>')
 def download(filename):
