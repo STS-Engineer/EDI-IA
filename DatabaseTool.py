@@ -17,16 +17,11 @@ from sqlalchemy.engine import URL
 
 db_url = URL.create(
     drivername="postgresql+psycopg2",
-    username="postgres",
-    password="moma@2025",  # No encoding needed
-    host="localhost",
+    username="adminavo",
+    password="$#fKcdXPg4@ue8AW",  # No encoding needed
+    host="avo-adb-001.postgres.database.azure.com",
     port=5432,
-    database="AVOcarbon"
-    #username="adminavo",
-    #password="$#fKcdXPg4@ue8AW",  # No encoding needed
-    #host="avo-adb-001.postgres.database.azure.com",
-    #port=5432,
-    #database="EDI IA"
+    database="EDI IA"
 )
 engine = create_engine(db_url)
 
